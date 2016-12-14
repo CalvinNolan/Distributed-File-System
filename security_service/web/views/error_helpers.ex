@@ -37,4 +37,8 @@ defmodule SecurityService.ErrorHelpers do
       Gettext.dgettext(SecurityService.Gettext, "errors", msg, opts)
     end
   end
+
+  def translate_error(msg) do
+    Gettext.dgettext(SecurityService.Gettext, "errors", msg)
+  end
 end

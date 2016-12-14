@@ -14,8 +14,8 @@ config :security_service, SecurityService.Endpoint,
   url: [host: "localhost"],
   secret_key_base: "33MIilcObv/xCQqgEtfW1xXO4uQAtgbdWpxQD13eh9gNqGPJvNwzPL1/3a7rHx3m",
   render_errors: [view: SecurityService.ErrorView, accepts: ~w(html json)],
-  pubsub: [name: SecurityService.PubSub,
-           adapter: Phoenix.PubSub.PG2]
+  pubsub: [name: SecurityService.PubSub, adapter: Phoenix.PubSub.PG2],
+  client_service_host: "http://localhost:3010"
 
 # Configures Elixir's Logger
 config :logger, :console,

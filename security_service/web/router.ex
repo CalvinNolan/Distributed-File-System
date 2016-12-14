@@ -6,8 +6,12 @@ defmodule SecurityService.Router do
   end
 
   scope "/", SecurityService do
-    pipe_through :api # Use the default browser stack
-
-    get "/", PageController, :index
+    pipe_through :api
+    
+    post "/signup", AuthController, :create_user
+    post "/logout", AuthController, :log_out
+    post "/login", AuthController, :log_in
+    post "/authenticate", AuthController, :authenticate
+    get "/status", AuthController, :check_auth_status
   end
 end
