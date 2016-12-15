@@ -180,7 +180,6 @@ defmodule SecurityService.AuthController do
 
   # Decrypts a base 64 string and converts it into a map
   def decrypt_request(request) do
-    IO.puts request
     JSON.decode!(Base.url_decode64!(request))
   end
 end

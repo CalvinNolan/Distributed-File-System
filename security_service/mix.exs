@@ -19,7 +19,7 @@ defmodule SecurityService.Mixfile do
   def application do
     [mod: {SecurityService, []},
      applications: [:phoenix, :phoenix_pubsub, :phoenix_html, :cowboy, :logger, :gettext,
-                    :phoenix_ecto, :postgrex, :comeonin]]
+                    :phoenix_ecto, :postgrex, :comeonin, :httpoison]]
   end
 
   # Specifies which paths to compile per environment.
@@ -39,7 +39,8 @@ defmodule SecurityService.Mixfile do
      {:gettext, "~> 0.11"},
      {:cowboy, "~> 1.0"},
      {:comeonin, "~> 3.0"},
-     {:poison, "~> 3.0", override: true}]
+     {:poison, "~> 3.0", override: true},
+     {:httpoison, "~> 0.10.0"}]
   end
 
   # Aliases are shortcuts or tasks specific to the current project.
