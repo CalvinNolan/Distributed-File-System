@@ -2,6 +2,7 @@ defmodule SecurityService.AuthController do
   use SecurityService.Web, :controller
   alias SecurityService.User
   alias SecurityService.AuthToken
+  alias Poison, as: JSON
   import Ecto.Query, only: [from: 2]
   import SecurityService.ErrorHelpers
 
@@ -17,31 +18,38 @@ defmodule SecurityService.AuthController do
       conn.cookies["auth_token"] ->
         render conn, "failure.json", message: "Already logged in."
 
-      Map.has_key?(user_params, "password") and Map.has_key?(user_params, "username") ->
+      Map.has_key?(user_params, "data") ->
+        request_data = decrypt_request(user_params["data"])
+
+        cond do 
+          Map.has_key?(request_data, "username") and Map.has_key?(request_data, "password") ->
         
-        changeset = User.changeset(%User{}, %{username: user_params["username"], password: Comeonin.Bcrypt.hashpwsalt(user_params["password"])})
+            changeset = User.changeset(%User{}, %{username: request_data["username"], password: Comeonin.Bcrypt.hashpwsalt(request_data["password"])})
 
-		    # Insert new user object.
-        case Repo.insert(changeset) do
-          {:ok, user} ->
-          	auth_token = create_unique_token()
+    		    # Insert new user object.
+            case Repo.insert(changeset) do
+              {:ok, user} ->
+              	auth_token = create_unique_token()
 
-          	# Invalidate all tokens for that user id.
-            from(p in AuthToken, join: c in assoc(p, :user), where: c.id == ^(user.id))
-            |> Repo.update_all(set: [valid: false])
+              	# Invalidate all tokens for that user id.
+                from(p in AuthToken, join: c in assoc(p, :user), where: c.id == ^(user.id))
+                |> Repo.update_all(set: [valid: false])
 
-            # Create and insert new auth token object.
-            changeset = Ecto.build_assoc(user, :auth_tokens, %{token: auth_token, valid: true})
-			      case Repo.insert(changeset) do
-              {:ok, token} ->
-                conn
-                |> Plug.Conn.put_resp_cookie("auth_token", auth_token, max_age: 30*365*24*60*60)
-                |> render("success.json", user: user, token: token.token)
+                # Create and insert new auth token object.
+                changeset = Ecto.build_assoc(user, :auth_tokens, %{token: auth_token, valid: true})
+    			      case Repo.insert(changeset) do
+                  {:ok, token} ->
+                    conn
+                    |> Plug.Conn.put_resp_cookie("auth_token", auth_token, max_age: 30*365*24*60*60)
+                    |> render("success.json", user: user, token: token.token)
+                  {:error, changeset} ->
+                    render conn, "failure.json", message: Ecto.Changeset.traverse_errors(changeset, &translate_error/1)
+                end
               {:error, changeset} ->
                 render conn, "failure.json", message: Ecto.Changeset.traverse_errors(changeset, &translate_error/1)
             end
-          {:error, changeset} ->
-            render conn, "failure.json", message: Ecto.Changeset.traverse_errors(changeset, &translate_error/1)
+          true ->
+            render conn, "failure.json", message: "Missing parameters."
         end
       true ->
       	render conn, "failure.json", message: "Missing parameters."
@@ -59,33 +67,40 @@ defmodule SecurityService.AuthController do
       conn.cookies["auth_token"] ->
         render conn, "failure.json", message: "Already logged in."
 
-      Map.has_key?(user_params, "username") and Map.has_key?(user_params, "password") ->
-        user = Repo.get_by(User, username: String.downcase(user_params["username"]))
+      Map.has_key?(user_params, "data") ->
+        request_data = decrypt_request(user_params["data"])
 
-        cond do
-          user ->
-            if Comeonin.Bcrypt.checkpw(user_params["password"], user.password) do
-              auth_token = create_unique_token()
+        cond do 
+          Map.has_key?(request_data, "username") and Map.has_key?(request_data, "password") ->
+            user = Repo.get_by(User, username: String.downcase(request_data["username"]))
 
-              # invalidate all tokens for that user id.
-              from(p in AuthToken, join: c in assoc(p, :user), where: c.id == ^(user.id))
-              |> Repo.update_all(set: [valid: false])
+            cond do
+              user ->
+                if Comeonin.Bcrypt.checkpw(request_data["password"], user.password) do
+                  auth_token = create_unique_token()
 
-              # insert new token as valid and set it as response cookie.
-              changeset = Ecto.build_assoc(user, :auth_tokens, %{token: auth_token, valid: true})
-              case Repo.insert(changeset) do
-                {:ok, token} ->
-                  conn
-                  |> Plug.Conn.put_resp_cookie("auth_token", auth_token, max_age: 30*365*24*60*60)
-                  |> render("success.json", user: user, token: token.token)
-                {:error, changeset} ->
-                  render conn, "failure.json", message: Ecto.Changeset.traverse_errors(changeset, &translate_error/1)
-              end
-            else
-              render conn, "failure.json", message: "Failed login."
-            end       
+                  # invalidate all tokens for that user id.
+                  from(p in AuthToken, join: c in assoc(p, :user), where: c.id == ^(user.id))
+                  |> Repo.update_all(set: [valid: false])
+
+                  # insert new token as valid and set it as response cookie.
+                  changeset = Ecto.build_assoc(user, :auth_tokens, %{token: auth_token, valid: true})
+                  case Repo.insert(changeset) do
+                    {:ok, token} ->
+                      conn
+                      |> Plug.Conn.put_resp_cookie("auth_token", auth_token, max_age: 30*365*24*60*60)
+                      |> render("success.json", user: user, token: token.token)
+                    {:error, changeset} ->
+                      render conn, "failure.json", message: Ecto.Changeset.traverse_errors(changeset, &translate_error/1)
+                  end
+                else
+                  render conn, "failure.json", message: "Failed login."
+                end       
+              true ->
+                render conn, "failure.json", message: "Username does not exist."
+            end
           true ->
-            render conn, "failure.json", message: "Username does not exist."
+            render conn, "failure.json", message: "Missing Parameters."
         end
       true ->
         render conn, "failure.json", message: "Missing Parameters."
@@ -104,16 +119,23 @@ defmodule SecurityService.AuthController do
   # Take in a token and username and confirm it is valid.
   def authenticate(conn, user_params) do
     cond do
-  	  Map.has_key?(user_params, "token") and Map.has_key?(user_params, "username") ->
-        query = from u in User,
-                join: t in assoc(u, :auth_tokens),
-                where: t.token == ^(user_params["token"]) and t.valid == true and u.username == ^(user_params["username"]),
-                select: u
-        user = Repo.one(query)
-        if user do
-          render conn, "success.json", user: user, token: user_params["token"]
-        else
-          render conn, "failure.json", message: "Failed Auth."
+      Map.has_key?(user_params, "data") ->
+        request_data = decrypt_request(user_params["data"])
+
+        cond do 
+          Map.has_key?(request_data, "username") and Map.has_key?(request_data, "password") ->
+            query = from u in User,
+                    join: t in assoc(u, :auth_tokens),
+                    where: t.token == ^(request_data["token"]) and t.valid == true and u.username == ^(request_data["username"]),
+                    select: u
+            user = Repo.one(query)
+            if user do
+              render conn, "success.json", user: user, token: request_data["token"]
+            else
+              render conn, "failure.json", message: "Failed Auth."
+            end
+          true ->
+            render conn, "failure.json", message: "Missing parameters."
         end
       true ->
         render conn, "failure.json", message: "Missing parameters."
@@ -154,5 +176,11 @@ defmodule SecurityService.AuthController do
     else
       auth_token
     end
+  end
+
+  # Decrypts a base 64 string and converts it into a map
+  def decrypt_request(request) do
+    IO.puts request
+    JSON.decode!(Base.url_decode64!(request))
   end
 end
