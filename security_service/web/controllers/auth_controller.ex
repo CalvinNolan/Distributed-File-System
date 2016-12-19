@@ -123,7 +123,7 @@ defmodule SecurityService.AuthController do
         request_data = decrypt_request(user_params["data"])
 
         cond do 
-          Map.has_key?(request_data, "username") and Map.has_key?(request_data, "password") ->
+          Map.has_key?(request_data, "username") and Map.has_key?(request_data, "token") ->
             query = from u in User,
                     join: t in assoc(u, :auth_tokens),
                     where: t.token == ^(request_data["token"]) and t.valid == true and u.username == ^(request_data["username"]),

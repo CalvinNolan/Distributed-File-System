@@ -1,0 +1,4 @@
+Registry: 3000
+Client: 3010
+Security: 3020
+Directory: 3040

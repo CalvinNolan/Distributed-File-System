@@ -10,19 +10,19 @@ defmodule SecurityService.AuthView do
   end
 
   def render("failure.json", %{message: message}) do
-  	encrypt_response(%{
-  		result: false,
-  		message: message
-  	})
+    encrypt_response(%{
+      result: false,
+      message: message
+    })
   end
 
   def render("success.json", %{user: user, token: token}) do
-  	encrypt_response(%{
-  		result: true,
-  		user_id: user.id,
-  		username: user.username,
+    encrypt_response(%{
+      result: true,
+      user_id: user.id,
+      username: user.username,
       token: token
-  	})
+    })
   end
 
   def encrypt_response(map) do
