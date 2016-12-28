@@ -167,6 +167,39 @@ defmodule SecurityService.AuthController do
     end
   end
 
+  # Returns the uid from a given username.
+  # Only accepts requests from the Directory Service.
+  def uid_from_username(conn, user_params) do
+    conn = conn 
+            |> put_resp_header("Access-Control-Allow-Origin", Application.get_env(:security_service, SecurityService.Endpoint)[:directory_service_host])
+            |> put_resp_header("Access-Control-Allow-Credentials", "true")
+            |> fetch_session()
+    
+    cond do
+      Map.has_key?(user_params, "data") ->
+        request_data = decrypt_request(user_params["data"])
+
+        cond do 
+          Map.has_key?(request_data, "username") ->
+        
+            query = from u in User,
+                    where: u.username == ^(request_data["username"]),
+                    select: u.id
+            user_id = Repo.one(query)
+            # Insert new user object.
+            if user_id do
+              render conn, "success_username.json", uid: user_id
+            else
+              render conn, "failure.json", message: "Invalid username."
+            end
+          true ->
+            render conn, "failure.json", message: "Missing parameters."
+        end
+      true ->
+        render conn, "failure.json", message: "Missing parameters."
+    end
+  end
+
   # Generates a unique auth token that has never been used before.
   def create_unique_token() do
     auth_token = :crypto.strong_rand_bytes(64) |> Base.url_encode64 |> binary_part(0, 64)

@@ -25,6 +25,13 @@ defmodule SecurityService.AuthView do
     })
   end
 
+  def render("success_username.json", %{uid: uid}) do
+    encrypt_response(%{
+      result: true,
+      user_id: uid
+    })
+  end
+
   def encrypt_response(map) do
     Base.url_encode64(JSON.encode!(map))
   end

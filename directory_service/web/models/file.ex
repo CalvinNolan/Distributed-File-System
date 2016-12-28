@@ -1,6 +1,6 @@
 defmodule DirectoryService.File do
   use DirectoryService.Web, :model
-  @derive {Poison.Encoder, only: [:uid, :owner_id, :owner_name, :filename]}
+  @derive {Poison.Encoder, only: [:id, :uid, :owner_id, :owner_name, :filename, :updated_at]}
   schema "files" do
     field :uid, :integer
     field :owner_id, :integer

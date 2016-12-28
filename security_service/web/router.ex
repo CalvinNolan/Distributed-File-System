@@ -13,5 +13,7 @@ defmodule SecurityService.Router do
     post "/login", AuthController, :log_in
     post "/authenticate", AuthController, :authenticate
     get "/status", AuthController, :check_auth_status
+
+    post "/uid", AuthController, :uid_from_username
   end
 end

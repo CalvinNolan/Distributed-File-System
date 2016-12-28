@@ -5,10 +5,6 @@ defmodule DirectoryService.DirectoryController do
   import Ecto.Query, only: [from: 2]
   import DirectoryService.ErrorHelpers
 
-  def index(conn, _params) do
-    render conn, "index.json", message: "hello!"
-  end
-
   def list_files(conn, user_params) do
     conn = conn 
         |> put_resp_header("Access-Control-Allow-Origin", Application.get_env(:directory_service, DirectoryService.Endpoint)[:client_service_host])
@@ -108,7 +104,74 @@ defmodule DirectoryService.DirectoryController do
   end
 
   def share_file(conn, user_params) do
-    
+    # Takes in fileid and username
+    conn = conn 
+        |> put_resp_header("Access-Control-Allow-Origin", Application.get_env(:directory_service, DirectoryService.Endpoint)[:client_service_host])
+        |> put_resp_header("Access-Control-Allow-Credentials", "true")
+        |> fetch_session()
+
+    cond do
+      Map.has_key?(user_params, "data") ->
+        request_data = decrypt_request(user_params["data"])
+
+        cond do
+          Map.has_key?(request_data, "username") and Map.has_key?(request_data, "auth_token") 
+            and Map.has_key?(request_data, "share_username") and Map.has_key?(request_data, "file_id") ->
+            
+            # Request to Security Service to authenticate user request.
+            auth_data = Base.url_encode64(JSON.encode!(%{token: request_data["auth_token"], username: request_data["username"]}))
+            {:ok, auth_response} = HTTPoison.post "#{Application.get_env(:directory_service, DirectoryService.Endpoint)[:security_service_host]}/authenticate", 
+                                                    "{\"data\": \"" <> auth_data <> "\"}", [{"Content-Type", "application/json"}]
+            decrypted_auth_response = decrypt_request(String.trim(auth_response.body, "\""))
+
+            cond do
+              Map.has_key?(decrypted_auth_response, "result") and decrypted_auth_response["result"] ->
+                
+                user_ownership_query = from f in File,
+                                       where: f.id == ^(request_data["file_id"]) and f.owner_id == ^(decrypted_auth_response["user_id"]),
+                                       select: f
+                user_ownership = Repo.one(user_ownership_query)
+
+                if user_ownership do
+                  # Request to Security Service to get the user_id from the username.
+                  user_data = Base.url_encode64(JSON.encode!(%{username: request_data["share_username"]}))
+                  {:ok, user_response} = HTTPoison.post "#{Application.get_env(:directory_service, DirectoryService.Endpoint)[:security_service_host]}/uid", 
+                                                          "{\"data\": \"" <> user_data <> "\"}", [{"Content-Type", "application/json"}]
+                  IO.puts user_response.body
+                  decrypted_user_response = decrypt_request(String.trim(user_response.body, "\""))
+
+                  cond do
+                    Map.has_key?(decrypted_user_response, "result") and decrypted_user_response["result"] ->
+                      # Add the file details to the server.
+                      changeset = File.changeset(%File{}, %{uid: decrypted_user_response["user_id"], 
+                                                              owner_id: decrypted_auth_response["user_id"],
+                                                                owner_name: decrypted_auth_response["username"],
+                                                                filename: user_ownership.filename, server: user_ownership.server})
+
+                      # Insert new user file in the directory.
+                      case Repo.insert(changeset) do
+                        {:ok, user_file} ->
+                          render conn, "success.json", message: "File successfully shared with " <> request_data["share_username"]
+                        {:error, changeset} ->
+                          render conn, "failure.json", message: Ecto.Changeset.traverse_errors(changeset, &translate_error/1)
+                      end
+                    Map.has_key?(decrypted_user_response, "result") and !decrypted_user_response["result"] ->
+                      render conn, "failure.json", message: decrypted_user_response["message"]
+                    true ->
+                      render conn, "failure.json", message: "Missing parameters."
+                  end
+                else
+                  render conn, "failure.json", message: "Invalid Ownership."
+                end
+              true ->
+                render conn, "failure.json", message: "Unauthorized."
+              end
+          true ->
+            render conn, "failure.json", message: "Missing parameters."
+        end
+      true ->
+        render conn, "failure.json", message: "Missing parameters."
+    end
   end
 
   def register_file_server(conn, user_params) do

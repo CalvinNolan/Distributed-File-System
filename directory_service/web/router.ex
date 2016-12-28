@@ -19,5 +19,7 @@ defmodule DirectoryService.Router do
     post "/write", DirectoryController, :write_file
 
     post "/all", DirectoryController, :list_files
+
+    post "/share", DirectoryController, :share_file
   end
 end
