@@ -5,6 +5,7 @@ defmodule DirectoryService.DirectoryController do
   import Ecto.Query, only: [from: 2]
   import DirectoryService.ErrorHelpers
 
+  # Gets all the files details a given user has access to.
   def list_files(conn, user_params) do
     conn = conn 
         |> put_resp_header("Access-Control-Allow-Origin", Application.get_env(:directory_service, DirectoryService.Endpoint)[:client_service_host])
@@ -53,6 +54,7 @@ defmodule DirectoryService.DirectoryController do
     
   end
 
+  # Uploads a new file for a user.
   def write_file(conn, user_params) do
     conn = conn 
         |> put_resp_header("Access-Control-Allow-Origin", Application.get_env(:directory_service, DirectoryService.Endpoint)[:client_service_host])
@@ -62,7 +64,6 @@ defmodule DirectoryService.DirectoryController do
     cond do
       Map.has_key?(user_params, "data") ->
         request_data = decrypt_request(user_params["data"])
-
         cond do
           Map.has_key?(request_data, "username") and Map.has_key?(request_data, "auth_token") and Map.has_key?(user_params, "file_data") ->
             
@@ -75,22 +76,34 @@ defmodule DirectoryService.DirectoryController do
             cond do
               Map.has_key?(decrypted_auth_response, "result") and decrypted_auth_response["result"] ->
                 # Pick a server to store the file.
-                # Look at each server currently online and pick the one with the least number of files.
+                # Look at each server currently online and pick the one with the least number of files.                
 
                 # Send the file onto the desired server.
+                new_filename = "\"" <> to_string(decrypted_auth_response["user_id"]) <> "/" <> user_params["file_data"].filename <> "\""
+                {:ok, write_response} = HTTPoison.post("http://localhost:3031/write", {:multipart, [{:file, user_params["file_data"].path, 
+                                                          { ["form-data"], [name: "\"file\"", 
+                                                                              filename: new_filename]},
+                                                                                [{"Content-Type", user_params["file_data"].content_type}]}]})
 
-                # Add the file details to the server.
-                changeset = File.changeset(%File{}, %{uid: decrypted_auth_response["user_id"], 
-                                                        owner_id: decrypted_auth_response["user_id"],
-                                                          owner_name: decrypted_auth_response["username"],
-                                                          filename: user_params["file_data"].filename, server: "0"})
+                write_response = decrypt_request(String.trim(write_response.body, "\""))
+                if write_response["result"] do
+                  # Add the file details to the server.
+                  changeset = File.changeset(%File{}, %{uid: decrypted_auth_response["user_id"], 
+                                                          owner_id: decrypted_auth_response["user_id"],
+                                                            owner_name: decrypted_auth_response["username"],
+                                                              filename: user_params["file_data"].filename, 
+                                                                file_id: write_response["file_id"],
+                                                                  server: "0"})
 
-                # Insert new user file in the directory.
-                case Repo.insert(changeset) do
-                  {:ok, user_file} ->
-                    render conn, "success.json", message: "File Successfully Written"
-                  {:error, changeset} ->
-                    render conn, "failure.json", message: Ecto.Changeset.traverse_errors(changeset, &translate_error/1)
+                  # Insert new user file in the directory.
+                  case Repo.insert(changeset) do
+                    {:ok, user_file} ->
+                      render conn, "success.json", message: "File Successfully Written"
+                    {:error, changeset} ->
+                      render conn, "failure.json", message: Ecto.Changeset.traverse_errors(changeset, &translate_error/1)
+                  end
+                else
+                  render conn, "failure.json", message: write_response["message"]
                 end
               true ->
                 render conn, "failure.json", message: "Unauthorized."
@@ -103,6 +116,7 @@ defmodule DirectoryService.DirectoryController do
     end
   end
 
+  # Shares a file with another user given their username.
   def share_file(conn, user_params) do
     # Takes in fileid and username
     conn = conn 
@@ -137,7 +151,7 @@ defmodule DirectoryService.DirectoryController do
                   user_data = Base.url_encode64(JSON.encode!(%{username: request_data["share_username"]}))
                   {:ok, user_response} = HTTPoison.post "#{Application.get_env(:directory_service, DirectoryService.Endpoint)[:security_service_host]}/uid", 
                                                           "{\"data\": \"" <> user_data <> "\"}", [{"Content-Type", "application/json"}]
-                  IO.puts user_response.body
+
                   decrypted_user_response = decrypt_request(String.trim(user_response.body, "\""))
 
                   cond do
