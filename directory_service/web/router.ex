@@ -17,7 +17,7 @@ defmodule DirectoryService.Router do
     pipe_through :api
     
     post "/write", DirectoryController, :write_file
-
+    post "/read", DirectoryController, :read_file
     post "/all", DirectoryController, :list_files
 
     post "/share", DirectoryController, :share_file

@@ -1,6 +1,6 @@
 defmodule DirectoryService.DirectoryController do
   use DirectoryService.Web, :controller
-  alias DirectoryService.File
+  alias DirectoryService.File, as: FileData
   alias Poison, as: JSON
   import Ecto.Query, only: [from: 2]
   import DirectoryService.ErrorHelpers
@@ -29,7 +29,7 @@ defmodule DirectoryService.DirectoryController do
               Map.has_key?(decrypted_auth_response, "result") and decrypted_auth_response["result"] ->
                 
                 # Get references to all the files this User has access to.
-                query = from f in File,
+                query = from f in FileData,
                   where: f.uid == ^(decrypted_auth_response["user_id"]),
                   select: f
                 user_files = Repo.all(query)
@@ -50,8 +50,54 @@ defmodule DirectoryService.DirectoryController do
     end
   end
 
+  # Returns a file that the user has access to.
   def read_file(conn, user_params) do
-    
+    conn = conn 
+        |> put_resp_header("Access-Control-Allow-Origin", Application.get_env(:directory_service, DirectoryService.Endpoint)[:client_service_host])
+        |> put_resp_header("Access-Control-Allow-Credentials", "true")
+        |> fetch_session()
+
+    cond do
+      Map.has_key?(user_params, "data") ->
+        request_data = decrypt_request(user_params["data"])
+        cond do
+          Map.has_key?(request_data, "username") and Map.has_key?(request_data, "auth_token") and Map.has_key?(request_data, "file_id") ->
+            
+            # Request to Security Service to authenticate user request.
+            auth_data = Base.url_encode64(JSON.encode!(%{token: request_data["auth_token"], username: request_data["username"]}))
+            {:ok, auth_response} = HTTPoison.post "#{Application.get_env(:directory_service, DirectoryService.Endpoint)[:security_service_host]}/authenticate", 
+                                                    "{\"data\": \"" <> auth_data <> "\"}", [{"Content-Type", "application/json"}]
+            decrypted_auth_response = decrypt_request(String.trim(auth_response.body, "\""))
+
+            cond do
+              Map.has_key?(decrypted_auth_response, "result") and decrypted_auth_response["result"] ->
+
+                # Ensure this user has access to the file they're requesting to read.
+                user_access_query = from f in FileData,
+                                    where: f.id == ^(request_data["file_id"]) and f.uid == ^(decrypted_auth_response["user_id"]),
+                                    select: f
+                user_access = Repo.one(user_access_query)
+
+                if user_access do
+                  # Read the file from the desired server.
+                  read_data = Base.url_encode64(JSON.encode!(%{file_id: request_data["file_id"]}))
+                  {:ok, read_response} = HTTPoison.post(user_access.server <> "/read", 
+                                                          "{\"data\": \"" <> read_data <> "\"}", 
+                                                            [{"Content-Type", "application/json"}])
+                  # Send the file contents back to the client.
+                  Plug.Conn.send_resp(conn, 200, read_response.body)
+                else
+                  render conn, "failure.json", message: "Invalid Access."
+                end
+              true ->
+                render conn, "failure.json", message: "Unauthorized."
+            end
+          true ->
+            render conn, "failure.json", message: "Missing Parameters."
+        end
+      true ->
+        render conn, "success.json", message: "Missing Parameters."
+    end
   end
 
   # Uploads a new file for a user.
@@ -88,12 +134,12 @@ defmodule DirectoryService.DirectoryController do
                 write_response = decrypt_request(String.trim(write_response.body, "\""))
                 if write_response["result"] do
                   # Add the file details to the server.
-                  changeset = File.changeset(%File{}, %{uid: decrypted_auth_response["user_id"], 
-                                                          owner_id: decrypted_auth_response["user_id"],
-                                                            owner_name: decrypted_auth_response["username"],
-                                                              filename: user_params["file_data"].filename, 
-                                                                file_id: write_response["file_id"],
-                                                                  server: "0"})
+                  changeset = FileData.changeset(%FileData{}, %{uid: decrypted_auth_response["user_id"], 
+                                                                  owner_id: decrypted_auth_response["user_id"],
+                                                                    owner_name: decrypted_auth_response["username"],
+                                                                      filename: user_params["file_data"].filename, 
+                                                                        file_id: write_response["file_id"],
+                                                                          server: "http://localhost:3031"})
 
                   # Insert new user file in the directory.
                   case Repo.insert(changeset) do
@@ -141,7 +187,7 @@ defmodule DirectoryService.DirectoryController do
             cond do
               Map.has_key?(decrypted_auth_response, "result") and decrypted_auth_response["result"] ->
                 
-                user_ownership_query = from f in File,
+                user_ownership_query = from f in FileData,
                                        where: f.id == ^(request_data["file_id"]) and f.owner_id == ^(decrypted_auth_response["user_id"]),
                                        select: f
                 user_ownership = Repo.one(user_ownership_query)
@@ -157,10 +203,11 @@ defmodule DirectoryService.DirectoryController do
                   cond do
                     Map.has_key?(decrypted_user_response, "result") and decrypted_user_response["result"] ->
                       # Add the file details to the server.
-                      changeset = File.changeset(%File{}, %{uid: decrypted_user_response["user_id"], 
-                                                              owner_id: decrypted_auth_response["user_id"],
-                                                                owner_name: decrypted_auth_response["username"],
-                                                                filename: user_ownership.filename, server: user_ownership.server})
+                      changeset = FileData.changeset(%FileData{}, %{uid: decrypted_user_response["user_id"], 
+                                                                      owner_id: decrypted_auth_response["user_id"],
+                                                                        owner_name: decrypted_auth_response["username"],
+                                                                          filename: user_ownership.filename, 
+                                                                            server: user_ownership.server})
 
                       # Insert new user file in the directory.
                       case Repo.insert(changeset) do

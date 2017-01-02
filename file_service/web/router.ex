@@ -19,6 +19,7 @@ defmodule FileService.Router do
     get "/", FileController, :index
 
     post "/write", FileController, :write_file
+    post "/read", FileController, :read_file
   end
 
   # Other scopes may use custom stacks.

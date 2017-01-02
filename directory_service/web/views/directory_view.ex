@@ -16,6 +16,12 @@ defmodule DirectoryService.DirectoryView do
     })
   end
 
+  def render("success.json", %{binary_file_data: binary_file_data}) do
+    %{
+      body: binary_file_data
+    }
+  end
+
   def render("success_list_files.json", %{files: files}) do 
   	encrypt_response(%{
   		result: true,

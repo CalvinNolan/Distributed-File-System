@@ -9,12 +9,42 @@ defmodule FileService.FileController do
     render conn, "success.json", message: "Hello."
   end
 
+  # Takes in a file_id and returns the UTF-8 encoded 
+  # file contents of that file stored on this server
   def read_file(conn, user_params) do
-    render conn, "success.json", message: "read file."
+    conn = conn 
+        |> put_resp_header("Access-Control-Allow-Origin", Application.get_env(:file_service, FileService.Endpoint)[:directory_service_host])
+        |> put_resp_header("Access-Control-Allow-Credentials", "true")
+        |> fetch_session()
+    
+    cond do
+      Map.has_key?(user_params, "data") ->
+        request_data = decrypt_request(user_params["data"])
+        cond do
+          Map.has_key?(request_data, "file_id") ->
+            file_query = from f in FileData,
+                    where: f.id == ^(request_data["file_id"]),
+                    select: f
+            file_data = Repo.one(file_query)
+            if file_data do
+              conn
+              |> put_resp_content_type("application/octet-stream", nil)
+              |> put_resp_header("content-disposition", ~s[attachment; filename="#{file_data.filename}"])
+              |> put_resp_header("content-transfer-encoding", "binary")
+              |> send_file(200, "files/" <> to_string(file_data.owner_id) <> "/" <> file_data.filename)
+            else
+              render conn, "failure.json", message: "Invalid File Id."
+            end
+          true ->
+            render conn, "failure.json", message: "Invalid Parameters."
+        end
+      true ->
+        render conn, "failure.json", message: "Invalid Parameters."
+    end
   end
 
   # Takes in a file and saves it.
-  def write_file(conn, user_params) do    
+  def write_file(conn, user_params) do
     conn = conn 
         |> put_resp_header("Access-Control-Allow-Origin", Application.get_env(:file_service, FileService.Endpoint)[:directory_service_host])
         |> put_resp_header("Access-Control-Allow-Credentials", "true")

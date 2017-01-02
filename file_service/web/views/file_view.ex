@@ -10,10 +10,16 @@ defmodule FileService.FileView do
   end
 
   def render("success.json", %{file_id: file_id}) do
-    IO.puts "success"
     encrypt_response(%{
       result: true,
       file_id: file_id
+    })
+  end
+
+  def render("success.json", %{message: message}) do
+    encrypt_response(%{
+      result: true,
+      message: message
     })
   end
 
