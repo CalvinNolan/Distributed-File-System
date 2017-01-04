@@ -21,5 +21,6 @@ defmodule DirectoryService.Router do
     post "/all", DirectoryController, :list_files
 
     post "/share", DirectoryController, :share_file
+    post "/register", DirectoryController, :register_file_server
   end
 end

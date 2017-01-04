@@ -1,5 +1,6 @@
 defmodule FileService do
   use Application
+  alias Poison, as: JSON
 
   # See http://elixir-lang.org/docs/stable/elixir/Application.html
   # for more information on OTP Applications
@@ -15,6 +16,16 @@ defmodule FileService do
       # Start your own worker by calling: FileService.Worker.start_link(arg1, arg2, arg3)
       # worker(FileService.Worker, [arg1, arg2, arg3]),
     ]
+
+    # Delete all existing files.
+    File.rm_rf("files/")
+    File.mkdir("files/")
+
+    # Register this file service with the Directory Service.
+    hostname = "http://" <> Application.get_env(:file_service, FileService.Endpoint)[:url][:host] <> ":#{System.get_env("PORT")}"
+    register_data = Base.url_encode64(JSON.encode!(%{secret_code: "secret_register_password", server: hostname}))
+    {:ok, response} = HTTPoison.post "#{Application.get_env(:file_service, FileService.Endpoint)[:directory_service_host]}/register", "{\"data\": \"" <> register_data <> "\"}", [{"Content-Type", "application/json"}]
+    IO.inspect JSON.decode!(Base.url_decode64!((String.trim(response.body, "\""))))
 
     # See http://elixir-lang.org/docs/stable/elixir/Supervisor.html
     # for other strategies and supported options

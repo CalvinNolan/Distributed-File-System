@@ -22,6 +22,13 @@ defmodule DirectoryService.DirectoryView do
     }
   end
 
+  def render("success.json", %{server_id: server_id}) do
+    encrypt_response(%{
+      result: true,
+      server_id: server_id
+    })
+  end
+
   def render("success_list_files.json", %{files: files}) do 
   	encrypt_response(%{
   		result: true,

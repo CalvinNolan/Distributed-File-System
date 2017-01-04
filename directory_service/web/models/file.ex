@@ -7,7 +7,7 @@ defmodule DirectoryService.File do
     field :owner_name, :string
     field :filename, :string
     field :file_id, :integer
-    field :server, :string
+    field :server, :integer
 
     timestamps()
   end

@@ -23,8 +23,8 @@ defmodule FileService.FileController do
         cond do
           Map.has_key?(request_data, "file_id") ->
             file_query = from f in FileData,
-                    where: f.id == ^(request_data["file_id"]),
-                    select: f
+                          where: f.id == ^(request_data["file_id"]),
+                          select: f
             file_data = Repo.one(file_query)
             if file_data do
               conn

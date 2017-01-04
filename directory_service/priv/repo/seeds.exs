@@ -9,3 +9,9 @@
 #
 # We recommend using the bang functions (`insert!`, `update!`
 # and so on) as they will fail if something goes wrong.
+alias DirectoryService.Repo
+alias DirectoryService.File
+alias DirectoryService.Server
+
+Repo.delete_all File
+Repo.delete_all Server
