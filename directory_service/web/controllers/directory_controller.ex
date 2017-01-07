@@ -314,7 +314,8 @@ defmodule DirectoryService.DirectoryController do
                 if backup_server.backup == -1 do
                   backup_server = Ecto.Changeset.change backup_server, backup: server_data.id
                   case Repo.update(backup_server) do
-                    {:ok, _} ->
+                    {:ok, updated_backup_server} ->
+                      replicate_onto_backup(updated_backup_server)
                       render conn, "success.json", server_id: server_data.id
                     {:error, changeset} ->
                       render conn, "failure.json", message: Ecto.Changeset.traverse_errors(changeset, &translate_error/1)
@@ -377,6 +378,18 @@ defmodule DirectoryService.DirectoryController do
         List.first(Repo.all(many_query))
       true ->
         %{id: -1, backup: 0}
+    end
+  end
+
+  # When a second file system is registered, backup the contents 
+  # of the first onto the second.
+  def replicate_onto_backup(server) do
+    backup_files_query = from f in FileData,
+                         where: f.server == ^(server.id)
+    backup_files = Repo.all(backup_files_query)
+    for file <- backup_files do
+      replicate_file = Replication.changeset(%Replication{}, %{file_id: file.id, server_id: server.backup})
+      Repo.insert(replicate_file)
     end
   end
 
