@@ -10,6 +10,6 @@ defmodule FileService.Repo.Migrations.CreateFile do
       timestamps()
     end
 
-    create unique_index(:files, [:owner_id, :filename], name: :no_duplicate_file_ownership)
+    # create unique_index(:files, [:owner_id, :filename], name: :no_duplicate_file_ownership)
   end
 end

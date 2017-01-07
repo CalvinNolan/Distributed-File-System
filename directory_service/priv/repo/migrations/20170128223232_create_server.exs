@@ -8,6 +8,7 @@ defmodule DirectoryService.Repo.Migrations.CreateFile do
       add :owner_name, :string
       add :filename, :string
       add :file_id, :integer
+      add :backup_file_id, :integer
       add :server, :integer
 
       timestamps()

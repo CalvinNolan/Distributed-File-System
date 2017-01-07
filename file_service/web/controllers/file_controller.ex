@@ -29,6 +29,7 @@ defmodule FileService.FileController do
             if file_data do
               conn
               |> put_resp_content_type("application/octet-stream", nil)
+              |> put_resp_header("actual-content-type", file_data.content_type)
               |> put_resp_header("content-disposition", ~s[attachment; filename="#{file_data.filename}"])
               |> put_resp_header("content-transfer-encoding", "binary")
               |> send_file(200, "files/" <> to_string(file_data.owner_id) <> "/" <> file_data.filename)

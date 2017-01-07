@@ -12,6 +12,8 @@
 alias DirectoryService.Repo
 alias DirectoryService.File
 alias DirectoryService.Server
+alias DirectoryService.Replication
 
 Repo.delete_all File
 Repo.delete_all Server
+Repo.delete_all Replication
