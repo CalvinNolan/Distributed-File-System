@@ -158,59 +158,74 @@ defmodule DirectoryService.DirectoryController do
               Map.has_key?(decrypted_auth_response, "result") and decrypted_auth_response["result"] ->
                 # Pick a server to store the file.
                 file_server = get_file_server
-
                 # Send the file onto the desired server.
                 new_filename = "\"" <> to_string(decrypted_auth_response["user_id"]) <> "/" <> user_params["file_data"].filename <> "\""
-                {:ok, write_response} = HTTPoison.post(file_server.host <> "/write", {:multipart, [{:file, user_params["file_data"].path, 
+                write_response = HTTPoison.post(file_server.host <> "/write", {:multipart, [{:file, user_params["file_data"].path, 
                                                         { ["form-data"], [name: "\"file\"", 
                                                                             filename: new_filename]},
                                                                               [{"Content-Type", user_params["file_data"].content_type}]}]})
-                write_response = decrypt_request(String.trim(write_response.body, "\""))
-
-                # Now replicate the file to it's backup server.
-                backup_write_response = 
-                  case file_server.backup do
-                    -1 ->
-                      %{:result => true, :message => "No backup server.", :file_id => -1}
-                    _ ->
-                      backup_server_query = from s in Server,
-                                            where: s.id == ^(file_server.backup),
-                                            select: s
-                      backup_server = Repo.one(backup_server_query)
-                      {:ok, backup_write_response} = HTTPoison.post(backup_server.host <> "/write", {:multipart, [{:file, user_params["file_data"].path, 
-                                                                      { ["form-data"], [name: "\"file\"", 
-                                                                                          filename: new_filename]},
-                                                                                            [{"Content-Type", user_params["file_data"].content_type}]}]})
-                      decrypt_request(String.trim(backup_write_response.body, "\""))
-                  end
-                if write_response["result"] and backup_write_response["result"] do
-                  # Add the file details to the directory.
-                  changeset = FileData.changeset(%FileData{}, %{uid: decrypted_auth_response["user_id"], 
-                                                                  owner_id: decrypted_auth_response["user_id"],
-                                                                    owner_name: decrypted_auth_response["username"],
-                                                                      filename: user_params["file_data"].filename, 
-                                                                        file_id: write_response["file_id"],
-                                                                          backup_file_id: backup_write_response["file_id"],
-                                                                            server: file_server.id})
-                  # Insert new user file in the directory.
-                  case Repo.insert(changeset) do
-                    {:ok, _} ->
-                      file_server = Ecto.Changeset.change file_server, file_count: (file_server.file_count + 1)
-                      case Repo.update(file_server) do
+                case write_response do
+                  {:ok, write_response_data} ->
+                    write_response = decrypt_request(String.trim(write_response_data.body, "\""))
+                    # Now replicate the file to it's backup server.
+                    backup_write_response = 
+                      case file_server.backup do
+                        -1 ->
+                          %{"result" => true, "message" => "No backup server.", "file_id" => -1}
+                        _ ->
+                          backup_server_query = from s in Server,
+                                                where: s.id == ^(file_server.backup)
+                          backup_server = Repo.one(backup_server_query)
+                          backup_write_response = HTTPoison.post(backup_server.host <> "/write", {:multipart, [{:file, user_params["file_data"].path, 
+                                                                  { ["form-data"], [name: "\"file\"", 
+                                                                    filename: new_filename]},
+                                                                      [{"Content-Type", user_params["file_data"].content_type}]}]})
+                          case backup_write_response do
+                            {:ok, backup_write_response_data} ->
+                              decrypt_request(String.trim(backup_write_response_data.body, "\""))
+                            {:error, backup_write_response_error} ->
+                              if backup_write_response_error.reason === :econnrefused do
+                                invalidate_lost_file_server(backup_server)
+                              end
+                              %{"result" => true, "message" => "Dead backup server.", "file_id" => -1}
+                          end
+                      end
+                    if write_response["result"] and backup_write_response["result"] do
+                      # Add the file details to the directory.
+                      changeset = FileData.changeset(%FileData{}, %{uid: decrypted_auth_response["user_id"], 
+                                                                      owner_id: decrypted_auth_response["user_id"],
+                                                                        owner_name: decrypted_auth_response["username"],
+                                                                          filename: user_params["file_data"].filename, 
+                                                                            file_id: write_response["file_id"],
+                                                                              backup_file_id: backup_write_response["file_id"],
+                                                                                server: file_server.id})
+                      # Insert new user file in the directory.
+                      case Repo.insert(changeset) do
                         {:ok, _} ->
-                          render conn, "success.json", message: "File Successfully Written"
+                          file_server = Ecto.Changeset.change file_server, file_count: (file_server.file_count + 1)
+                          case Repo.update(file_server) do
+                            {:ok, _} ->
+                              render conn, "success.json", message: "File Successfully Written"
+                            {:error, changeset} ->
+                              render conn, "failure.json", message: Ecto.Changeset.traverse_errors(changeset, &translate_error/1)
+                          end
                         {:error, changeset} ->
                           render conn, "failure.json", message: Ecto.Changeset.traverse_errors(changeset, &translate_error/1)
                       end
-                    {:error, changeset} ->
-                      render conn, "failure.json", message: Ecto.Changeset.traverse_errors(changeset, &translate_error/1)
-                  end
-                else
-                  if write_response["result"] do
-                    render conn, "failure.json", message: backup_write_response["message"]
-                  else
-                    render conn, "failure.json", message: write_response["message"]
-                  end
+                    else
+                      if write_response["result"] do
+                        render conn, "failure.json", message: backup_write_response["message"]
+                      else
+                        render conn, "failure.json", message: write_response["message"]
+                      end
+                    end
+                  {:error, write_response_error} ->
+                    if write_response_error.reason === :econnrefused do
+                      invalidate_lost_file_server(file_server)
+                      write_file(conn, user_params)
+                    else
+                      render conn, "failure.json", message: "Internal File Server Error."
+                    end
                 end
               true ->
                 render conn, "failure.json", message: "Unauthorized."
@@ -423,7 +438,7 @@ defmodule DirectoryService.DirectoryController do
       end
 
       # Add file count of dead file server to the backup server which will now host it's files.
-      Repo.update(Ecto.Changeset.change new_backup_server, file_count: new_backup_server.file_count + file_server.file_count)
+      Repo.update(Ecto.Changeset.change new_backup_server, file_count: new_backup_server.file_count + invalid_file_count)
 
       # Secondly re-backup any file servers that were depending on the newly
       # dead file server.
