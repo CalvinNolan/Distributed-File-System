@@ -82,6 +82,39 @@ defmodule FileService.FileController do
     end
   end
 
+  # Takes in a file and updates it.
+  def update_file(conn, user_params) do
+    conn = conn 
+        |> put_resp_header("Access-Control-Allow-Origin", Application.get_env(:file_service, FileService.Endpoint)[:directory_service_host])
+        |> put_resp_header("Access-Control-Allow-Credentials", "true")
+        |> fetch_session()
+
+    cond do
+      Map.has_key?(user_params, "file") ->
+        # First extract the owner id from the filename, then check if a directory exists for it.
+        [file_id, owner_id, filename] = String.split(user_params["file"].filename, "/", parts: 3)
+        update_file = Repo.get_by(FileData, id: file_id)
+        if update_file.filename == filename && update_file.content_type == user_params["file"].content_type do
+          
+          case File.rm("files/" <> owner_id <> "/" <> filename) do
+            :ok ->
+              case File.cp(user_params["file"].path, "files/" <> owner_id <> "/" <> filename) do
+                :ok ->
+                  render conn, "success.json", message: "Updated file."
+                {:error, reason} ->
+                  render conn, "failure.json", message: reason
+              end
+            {:error, reason} ->
+              render conn, "failure.json", message: reason
+          end
+        else
+          render conn, "failure.json", message: "Update file not of same name or type."
+        end
+      true ->
+        render conn, "failure.json", message: "Missing parameters."
+    end
+  end
+
   # Decrypts a base 64 string and converts it into a map
   def decrypt_request(request) do
     JSON.decode!(Base.url_decode64!(request))

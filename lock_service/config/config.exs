@@ -6,19 +6,20 @@
 use Mix.Config
 
 # General application configuration
-config :directory_service,
-  ecto_repos: [DirectoryService.Repo]
+config :lock_service,
+  ecto_repos: [LockService.Repo]
 
 # Configures the endpoint
-config :directory_service, DirectoryService.Endpoint,
+config :lock_service, LockService.Endpoint,
   url: [host: "localhost"],
-  secret_key_base: "WCk6NTObZT3A/ROYUp0bVwvjVUMor9JL3v6bnRkVmpUjE2+7CUcOFhrhBtHrmxYW",
-  render_errors: [view: DirectoryService.ErrorView, accepts: ~w(html json)],
-  pubsub: [name: DirectoryService.PubSub, adapter: Phoenix.PubSub.PG2],
+  secret_key_base: "diqnCt9WdJilgKX0K60AfAzk2A2B6G6i2dKUp1D5ayJBQa5MCJQP/YaHSi8Cej/L",
+  render_errors: [view: LockService.ErrorView, accepts: ~w(html json)],
+  pubsub: [name: LockService.PubSub,
+           adapter: Phoenix.PubSub.PG2],
+  directory_service_host: "http://localhost:3040",
   client_service_host: "http://localhost:3010",
   registry_service_host: "http://localhost:3000",
-  security_service_host: "http://localhost:3020",
-  lock_service_host: "http://localhost:3050"
+  security_service_host: "http://localhost:3020"
 
 # Configures Elixir's Logger
 config :logger, :console,

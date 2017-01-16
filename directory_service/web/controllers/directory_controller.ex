@@ -30,17 +30,29 @@ defmodule DirectoryService.DirectoryController do
             cond do
               Map.has_key?(decrypted_auth_response, "result") and decrypted_auth_response["result"] ->
                 
-                # Get references to all the files this User has access to.
-                query = from f in FileData,
-                  where: f.uid == ^(decrypted_auth_response["user_id"]),
-                  select: f
-                user_files = Repo.all(query)
+                # Request to Security Service to authenticate user request.
+                lock_data = Base.url_encode64(JSON.encode!(%{user_id: decrypted_auth_response["user_id"]}))
+                {:ok, lock_response} = HTTPoison.post "#{Application.get_env(:directory_service, DirectoryService.Endpoint)[:lock_service_host]}/list", 
+                                                        "{\"data\": \"" <> lock_data <> "\"}", [{"Content-Type", "application/json"}]
+                decrypted_lock_response = decrypt_request(String.trim(lock_response.body, "\""))
 
-                if user_files do
-                  render conn, "success_list_files.json", files: user_files
-                else
-                  render conn, "failure.json", message: "No files available for this user."
-                end
+                cond do
+                  Map.has_key?(decrypted_lock_response, "result") and decrypted_lock_response["result"] ->
+              
+                    # Get references to all the files this User has access to.
+                    query = from f in FileData,
+                      where: f.uid == ^(decrypted_auth_response["user_id"]),
+                      select: f
+                    user_files = Repo.all(query)
+
+                    if user_files do
+                      render conn, "success_list_files.json", files: user_files, locks: decrypted_lock_response["locks"]
+                    else
+                      render conn, "failure.json", message: "No files available for this user."
+                    end
+                  true ->
+                    render conn, "failure.json", message: "Unauthorized lock failure."
+                  end
               true ->
                 render conn, "failure.json", message: "Unauthorized."
               end
@@ -237,6 +249,80 @@ defmodule DirectoryService.DirectoryController do
         render conn, "failure.json", message: "Missing parameters."
     end
   end
+  
+  # Updates a file for a user.
+  def update_file(conn, user_params) do
+    conn = conn 
+        |> put_resp_header("Access-Control-Allow-Origin", Application.get_env(:directory_service, DirectoryService.Endpoint)[:client_service_host])
+        |> put_resp_header("Access-Control-Allow-Credentials", "true")
+        |> fetch_session()
+
+    cond do
+      Map.has_key?(user_params, "data") ->
+        request_data = decrypt_request(user_params["data"])
+        cond do
+          Map.has_key?(request_data, "username") and Map.has_key?(request_data, "auth_token") 
+            and Map.has_key?(request_data, "lock_token") and Map.has_key?(request_data, "file_id") 
+              and Map.has_key?(user_params, "file_data") and has_file_servers ->
+            
+            # Request to Security Service to authenticate user request.
+            auth_data = Base.url_encode64(JSON.encode!(%{token: request_data["auth_token"], username: request_data["username"]}))
+            {:ok, auth_response} = HTTPoison.post "#{Application.get_env(:directory_service, DirectoryService.Endpoint)[:security_service_host]}/authenticate", 
+                                                    "{\"data\": \"" <> auth_data <> "\"}", [{"Content-Type", "application/json"}]
+            decrypted_auth_response = decrypt_request(String.trim(auth_response.body, "\""))
+
+            cond do
+              Map.has_key?(decrypted_auth_response, "result") and decrypted_auth_response["result"] ->
+
+                # Ensure this user has access to the file they're requesting to update.
+                user_access_query = from f in FileData,
+                                    where: f.id == ^(request_data["file_id"]) and f.uid == ^(decrypted_auth_response["user_id"]),
+                                    select: f
+                user_access = Repo.one(user_access_query)
+
+                if user_access do
+                  # Verify Lock Token
+                  lock_data = Base.url_encode64(JSON.encode!(%{lock_token: request_data["lock_token"], file_id: user_access.file_id}))
+                  {:ok, lock_response} = HTTPoison.post "#{Application.get_env(:directory_service, DirectoryService.Endpoint)[:lock_service_host]}/isvalid", 
+                                                          "{\"data\": \"" <> lock_data <> "\"}", [{"Content-Type", "application/json"}]
+                  decrypted_lock_response = decrypt_request(String.trim(lock_response.body, "\""))
+                  cond do
+                    Map.has_key?(decrypted_lock_response, "result") and decrypted_lock_response["result"] and decrypted_lock_response["is_token"] ->
+                      update_server = Repo.get_by(Server, id: user_access.server)
+                      
+                      # Send the updated file onto the desired server.
+                      new_filename = "\"" <> to_string(user_access.file_id) <> "/" <> to_string(user_access.owner_id) <> "/" <> user_params["file_data"].filename <> "\""
+                      write_response = HTTPoison.post(update_server.host <> "/update", {:multipart, [{:file, user_params["file_data"].path, 
+                                                              { ["form-data"], [name: "\"file\"", 
+                                                                                  filename: new_filename]},
+                                                                                    [{"Content-Type", user_params["file_data"].content_type}]}]})
+                      case write_response do
+                        {:ok, write_response_data} ->
+                          write_response = decrypt_request(String.trim(write_response_data.body, "\""))
+                          if write_response["result"] do
+                            render conn, "success.json", message: "File updated."
+                          else
+                            render conn, "failure.json", message: write_response["message"]
+                          end
+                        {:error, _} ->
+                          render conn, "failure.json", message: "Internal File Server Error."
+                      end
+                    true ->
+                      render conn, "failure.json", message: "Invalid lock token."
+                  end
+                else
+                  render conn, "failure.json", message: "Unauthorized."
+                end
+              true ->
+                render conn, "failure.json", message: "Unauthorized."
+            end
+          true ->
+            render conn, "failure.json", message: "Missing parameters."
+        end
+      true ->
+        render conn, "failure.json", message: "Missing parameters."
+    end
+  end
 
   # Shares a file with another user given their username.
   def share_file(conn, user_params) do
@@ -278,7 +364,9 @@ defmodule DirectoryService.DirectoryController do
                   cond do
                     Map.has_key?(decrypted_user_response, "result") and decrypted_user_response["result"] ->
                       # Add the file details to the server.
-                      changeset = FileData.changeset(%FileData{}, %{uid: decrypted_auth_response["user_id"], 
+                      IO.inspect decrypted_auth_response
+                      IO.inspect user_ownership
+                      changeset = FileData.changeset(%FileData{}, %{uid: decrypted_user_response["user_id"], 
                                                                       owner_id: decrypted_auth_response["user_id"],
                                                                         owner_name: decrypted_auth_response["username"],
                                                                           filename: user_ownership.filename,  
@@ -288,8 +376,10 @@ defmodule DirectoryService.DirectoryController do
                       # Insert new user file in the directory.
                       case Repo.insert(changeset) do
                         {:ok, _} ->
+                          IO.puts "OK sharing"
                           render conn, "success.json", message: "File successfully shared with " <> request_data["share_username"]
                         {:error, changeset} ->
+                          IO.puts "Error sharing"
                           render conn, "failure.json", message: Ecto.Changeset.traverse_errors(changeset, &translate_error/1)
                       end
                     Map.has_key?(decrypted_user_response, "result") and !decrypted_user_response["result"] ->
@@ -343,6 +433,32 @@ defmodule DirectoryService.DirectoryController do
             end
           true ->
             render conn, "failure.json", message: "Invalid Parameters."
+        end
+      true ->
+        render conn, "failure.json", message: "Missing Parameters."
+    end
+  end
+
+  # Checks if a user has access to a specified file.
+  # Primarily used for the lock service.
+  def has_access(conn, user_params) do
+    conn = conn 
+        |> put_resp_header("Access-Control-Allow-Origin", Application.get_env(:directory_service, DirectoryService.Endpoint)[:lock_service_host])
+        |> put_resp_header("Access-Control-Allow-Credentials", "true")
+        |> fetch_session()
+
+    cond do
+      Map.has_key?(user_params, "data") ->
+        request_data = decrypt_request(user_params["data"])
+
+        cond do
+          Map.has_key?(request_data, "user_id") and Map.has_key?(request_data, "file_id") ->
+            file = Repo.get_by(FileData, id: request_data["file_id"])
+            if file.uid == request_data["user_id"] do
+              render conn, "has_access_id.json", %{has_access: true, file_id: file.file_id}
+            else
+              render conn, "has_access.json", has_access: false
+            end
         end
       true ->
         render conn, "failure.json", message: "Missing Parameters."

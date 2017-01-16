@@ -20,6 +20,7 @@ defmodule FileService.Router do
 
     post "/write", FileController, :write_file
     post "/read", FileController, :read_file
+    post "/update", FileController, :update_file
   end
 
   # Other scopes may use custom stacks.

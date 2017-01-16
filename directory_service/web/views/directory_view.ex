@@ -29,11 +29,27 @@ defmodule DirectoryService.DirectoryView do
     })
   end
 
-  def render("success_list_files.json", %{files: files}) do 
+  def render("success_list_files.json", %{files: files, locks: locks}) do 
   	encrypt_response(%{
   		result: true,
-  		files: files
+  		files: files,
+      locks: locks
   	})
+  end
+
+  def render("has_access.json", %{has_access: has_access}) do 
+    encrypt_response(%{
+      result: true,
+      has_access: has_access
+    })
+  end
+
+  def render("has_access_id.json", %{has_access: has_access, file_id: file_id}) do 
+    encrypt_response(%{
+      result: true,
+      has_access: has_access,
+      file_id: file_id
+    })
   end
 
   def encrypt_response(map) do
