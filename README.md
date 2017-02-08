@@ -13,17 +13,19 @@ locking all through a full replicated and encrytped set of file servers.
 
 The system is compromised of 6 services. Clicking on the service name will link to that service's readme which will explain in much more details the features of each service.
 <ul>
-  <li><b>Client Service</b> - The client service's readme will cover: single page applications, asynchronous user authentication, hadnling file contents.</li>
-  <li><b>Directory Service</b> - The directory service's readme will cover: file servers management, file replication, caching, sharing and updating files, creating and deleting files.</li>
-  <li><b>File Service</b> - The file service's readme will cover: file storage, transporting files.</li>
-  <li><b>Security Service</b> - The security service's readme will cover: cookie based user authentication, user accounts, authenticating tokens, persistent sessions.</li>
-  <li><b>Lock Service</b> - The lock service's readme will cover: locking tokens, managing user access.</li>
-  <li><b>Registry Service</b> - The registry service's readme will cover: organising and maintaining services.</li>
+<li><a href="https://github.com/CalvinNolan/Distributed-File-System/tree/master/client_service"><b>Client Service</b></a> - The client service's readme will cover: single page applications, asynchronous user authentication, hadnling file contents.</li>
+  <li><a href="https://github.com/CalvinNolan/Distributed-File-System/tree/master/client_service"><b>Directory Service</b></a> - The directory service's readme will cover: file servers management, file replication, caching, sharing and updating files, creating and deleting files.</li>
+  <li><a href="https://github.com/CalvinNolan/Distributed-File-System/tree/master/client_service"><b>File Service</b></a> - The file service's readme will cover: file storage, transporting files.</li>
+  <li><a href="https://github.com/CalvinNolan/Distributed-File-System/tree/master/client_service"><b>Security Service</b></a> - The security service's readme will cover: cookie based user authentication, user accounts, authenticating tokens, persistent sessions.</li>
+  <li><a href="https://github.com/CalvinNolan/Distributed-File-System/tree/master/client_service"><b>Lock Service</b></a> - The lock service's readme will cover: locking tokens, managing user access.</li>
+  <li><a href="https://github.com/CalvinNolan/Distributed-File-System/tree/master/client_service"><b>Registry Service</b></a> - The registry service's readme will cover: organising and maintaining services.</li>
 </ul>
 
 Each service's implementation exists in it's own folder in the repo with it's own readme explaining the design behind the service.
 
 # Overall Architecture
+
+<img src="./images/OverallArchitecture.png" width="500" />
 
 Each of the services rely on each other to provide some feature set to the user. All user input and interaction comes through the client service as a web application which provides an easy interface to use.
 
