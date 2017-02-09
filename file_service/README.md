@@ -10,6 +10,8 @@ When a user wishes to update a file, the only requirements enforced are that the
 
 Ontop of storing files as their primary place of storage, file services are used as a backup for other file services. The backup files are documented equally like all other files on the service but are handled differently by the directory service which holds seperate references for backup files compared to primary files.
 
+On startup a file service registers itself with the directory service to let it know it's available for storage and backup.
+
 If more time was dedicated to developing the file service, a different database that specialise in storing files could have been used to ensure stronger security and faster read and write times.
 
 <b>Note: </b>All server logic exists in `web/controllers/file_controller.ex`, data modeling lives in `web/models/file.ex`, routing in `web/router.ex` and response formatting in `web/views/file_view.ex`.
