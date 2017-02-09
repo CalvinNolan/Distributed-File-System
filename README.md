@@ -4,10 +4,9 @@ A Distributed File System compromising of many REST services. The core services 
 <a href="http://elixir-lang.org">Elixir<a> with the <a href="http://www.phoenixframework.org">Phonenix Framework</a>.
 The services are capable of existing on physically seperate machines while working together in a true distributed fashion.
 
-The entire system provides a distributed file system that can be utilised through a web client. 
-The web client uses user accounts and cookie based authentication. 
+The entire system provides a distributed file system that can be utilised through a web client.
 The features of the distributed file system include typical file storage, sharing and 
-locking all through a full replicated and encrytped set of file servers.
+locking all through a full replicated and encrypted set of file servers while providing a simple and easy to user interface in the form of a website through the client service.
 
 # Services
 
